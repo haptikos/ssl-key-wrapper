@@ -1,0 +1,11 @@
+diff -ur orig/openssl-1.1.1d/apps/enc.c openssl-1.1.1d/apps/enc.c
+--- orig/openssl-1.1.1d/apps/enc.c      
++++ openssl-1.1.1d/apps/enc.c   
+@@ -533,6 +533,7 @@
+          */
+
+         BIO_get_cipher_ctx(benc, &ctx);
++        EVP_CIPHER_CTX_set_flags(ctx, EVP_CIPHER_CTX_FLAG_WRAP_ALLOW);
+
+         if (!EVP_CipherInit_ex(ctx, cipher, NULL, NULL, NULL, enc)) {
+             BIO_printf(bio_err, "Error setting cipher %s\n",
