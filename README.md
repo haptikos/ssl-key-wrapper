@@ -27,6 +27,12 @@ To build the Docker image, run the following command:
 docker build -t ssl-key-wrapper --platform linux/amd64 .
 ```
 
+### Pull the Docker Image
+
+```bash
+docker pull ghcr.io/haptikos/ssl-key-wrapper --platform linux/amd64
+```
+
 ### Running the container
 
 You can run the Docker container with the following command:
