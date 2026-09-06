@@ -1,0 +1,117 @@
+#!/bin/bash
+set -e
+
+DEFAULT_KEY_SIZE=4096
+DEFAULT_PRINT_OUTPUT=true
+
+if [ -z "$PRINT_OUTPUT" ]; then
+    export PRINT_OUTPUT=$DEFAULT_PRINT_OUTPUT
+fi
+
+# Generate a random password using OpenSSL
+generate_random_password() {
+    openssl rand -base64 20
+}
+
+# Generate a private key with AES-256 encryption
+generate_private_key() {
+    openssl genrsa -aes256 -passout env:KEY_PASSWORD -out private_key.pem "$KEY_SIZE"
+
+    # Optionally print the key
+    if [ "$PRINT_OUTPUT" = "true" ]; then
+        echo "Private Key:"
+        cat private_key.pem
+    fi
+}
+
+# Convert the private key to DER format
+convert_key_to_der() {
+    openssl rsa -inform pem -in private_key.pem -passin env:KEY_PASSWORD -outform der -out private_key.der
+}
+
+# Check if public_wrapping_key.pem exists or create it from the PUBLIC_WRAPPING_KEY environment variable
+check_public_wrapping_key() {
+    if [ ! -f "public_wrapping_key.pem" ]; then
+        if [ -z "$PUBLIC_WRAPPING_KEY" ]; then
+            echo "Error: $(pwd)/public_wrapping_key.pem file not found and PUBLIC_WRAPPING_KEY environment variable is not set." >&2
+            echo "Please provide public_wrapping_key.pem file or set PUBLIC_WRAPPING_KEY environment variable." >&2
+            exit 1
+        else
+            echo -e "$PUBLIC_WRAPPING_KEY" > public_wrapping_key.pem
+        fi
+    fi
+}
+
+# Wrap the key using OpenSSL and temporary AES key
+wrap_key() {
+    local aes_key_path=$(pwd)/t_aes.key
+    local wrap_public_key=public_wrapping_key.pem
+    local wrapped_aes_key_path=$(pwd)/w_t_aes.key
+    local private_key_der_path=private_key.der
+
+    # Generate a temporary AES key
+    openssl rand -out "$aes_key_path" 32
+
+    # Encrypt the temporary AES key with the public key
+    openssl pkeyutl -encrypt -in "$aes_key_path" -inkey "$wrap_public_key" -pubin -out "$wrapped_aes_key_path" \
+        -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+
+    # Convert the temporary AES key to a hexdump format
+    local aes_key_hexdump
+    aes_key_hexdump=$(hexdump -v -e '/1 "%02x"' < "$aes_key_path")
+
+    # Wrap the target key with the encrypted AES key
+    "$HOME/local/bin/openssl.sh" enc -id-aes256-wrap-pad -iv A65959A6 -K "$aes_key_hexdump" \
+        -in "$private_key_der_path" -out wrapped_target_key_file
+
+    # Combine the wrapped key and the encrypted AES key into one file
+    cat "$wrapped_aes_key_path" wrapped_target_key_file > key.bin
+
+    # Optionally print the key and password in base64
+    if [ "$PRINT_OUTPUT" = "true" ]; then
+        echo "Base64 Encoded Wrapped Key:"
+        base64 key.bin
+    fi
+}
+
+# Ensure public_wrapping_key.pem is available
+check_public_wrapping_key
+
+# Generate the private key if it doesn't already exist
+if [ ! -f "private_key.pem" ]; then
+    echo "Private key not found, generating a new private key."
+    
+    # Set a random KEY_PASSWORD if not already defined
+    if [ -z "$KEY_PASSWORD" ]; then
+        echo "Key password not provided, generating a new key password."
+        export KEY_PASSWORD=$(generate_random_password)
+
+        # Print the generated password if PRINT_OUTPUT is not set to false
+        if [ "$PRINT_OUTPUT" = "true" ]; then
+            echo "Generated Key Password (Base64):"
+            echo "$KEY_PASSWORD"
+        fi
+    fi
+
+    # Set default key size if not already defined
+    if [ -z "$KEY_SIZE" ]; then
+        echo "Key size not provided, using default size: $DEFAULT_KEY_SIZE."
+        export KEY_SIZE=$DEFAULT_KEY_SIZE
+    fi
+    
+    generate_private_key
+else
+    # Check KEY_PASSWORD if key was provided
+    if [ -z "$KEY_PASSWORD" ]; then
+        echo "Error: Custom private key was provided, but KEY_PASSWORD is not set." >&2
+        exit 1
+    fi
+fi
+
+# Convert the private key to DER format
+convert_key_to_der
+
+# Wrap the private key using the wrapping key
+wrap_key
+
+echo "Key wrapping process completed successfully."
