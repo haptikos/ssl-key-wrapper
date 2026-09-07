@@ -1,4 +1,4 @@
-from ubuntu as builder
+FROM ubuntu AS builder
 
 COPY patch.txt /tmp/patch.txt
 
@@ -6,8 +6,9 @@ RUN apt-get update  && \
     apt-get install -y curl patch make gcc libfindbin-libs-perl && \
     mkdir /root/build && \
     mkdir -p /root/local/ssl && \
-    cd /root/build && \ 
-    curl -O https://www.openssl.org/source/openssl-1.1.1d.tar.gz && \
+    cd /root/build && \
+    curl -fsSLO https://www.openssl.org/source/old/1.1.1/openssl-1.1.1d.tar.gz && \
+    echo "1e3a91bc1f9dfce01af26026f856e064eab4c8ee0a8f457b5ae30b40b8b711f2  openssl-1.1.1d.tar.gz" | sha256sum -c - && \
     tar -zxf openssl-1.1.1d.tar.gz && \
     cat /tmp/patch.txt | patch -d /root/build/ -p0 && \
     cd /root/build/openssl-1.1.1d/ && \
@@ -19,11 +20,11 @@ RUN apt-get update  && \
     chmod 755 ./openssl.sh && \
     /root/local/bin/openssl.sh version
 
-from ubuntu
+FROM ubuntu
 COPY wrap_key /usr/bin/wrap_key
 
 RUN apt-get update  && \
-    apt-get install -y bsdmainutils openssl && \ 
+    apt-get install -y bsdmainutils openssl && \
     mkdir -p /root/local/bin/ && \
     mkdir -p /root/local/lib/ && \
     mkdir -p /opt/wrap_key/ && \
